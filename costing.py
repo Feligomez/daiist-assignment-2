@@ -62,7 +62,37 @@ def sweep(df: pd.DataFrame, base_rate: float | None = None, steps: int = 201):
     """Single-threshold sweep (no review band). Returns thresholds, costs, argmin."""
     ts = np.linspace(0, 1, steps)
     costs = np.array([evaluate(df, t, t, base_rate)["cost_per_1000"] for t in ts])
-    return ts, costs, float(ts[int(costs.argmin())])
+    # With a small, near-perfect test set many thresholds tie for the minimum. argmin would
+    # return the first tie (often ~0.01), which is meaningless. Take the MIDDLE of the longest
+    # flat minimum-cost stretch instead: it is the threshold furthest from either cliff.
+    ok = costs <= costs.min() + max(1e-9, 0.01 * abs(costs.min()))
+    runs, start = [], None
+    for i, v in enumerate(ok):
+        if v and start is None:
+            start = i
+        if start is not None and (not v or i == len(ok) - 1):
+            runs.append((start, i if v else i - 1))
+            start = None
+    s, e = max(runs, key=lambda r: r[1] - r[0])
+    return ts, costs, float((ts[s] + ts[e]) / 2)
+
+
+def bootstrap(df: pd.DataFrame, base_rate: float | None = None, n: int = 200, seed: int = 0):
+    """Resample the scored images with replacement and re-run the sweep each time.
+
+    Returns (best thresholds, minimum costs). The spread shows how much the 'optimal'
+    threshold and its cost depend on which few images happened to be in the sample.
+    """
+    rng = np.random.default_rng(seed)
+    ths, mins = [], []
+    for _ in range(n):
+        s = df.iloc[rng.integers(0, len(df), len(df))]
+        if s.label.nunique() < 2:
+            continue
+        _, c, t = sweep(s, base_rate, steps=101)
+        ths.append(t)
+        mins.append(float(c.min()))
+    return np.array(ths), np.array(mins)
 
 
 def staffing(review_share: float) -> dict:

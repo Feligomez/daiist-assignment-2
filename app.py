@@ -18,7 +18,20 @@ from ultralytics import YOLO
 import config as C
 import costing
 
-df = pd.read_csv(C.OUT / "test_scores.csv")
+df_test = pd.read_csv(C.OUT / "test_scores.csv")
+_vp = C.OUT / "valid_scores.csv"
+df_valid = pd.read_csv(_vp) if _vp.exists() else None
+SOURCES = ["Test only"] + (["Valid + Test (pooled)", "Valid only"] if df_valid is not None else [])
+
+
+def get_df(source):
+    if source == "Valid only" and df_valid is not None:
+        return df_valid
+    if source == "Valid + Test (pooled)" and df_valid is not None:
+        return pd.concat([df_valid, df_test], ignore_index=True)
+    return df_test
+
+
 metrics = json.loads((C.OUT / "metrics.json").read_text())
 model = YOLO(str(C.WEIGHTS))
 POS_IDS = {i for i, n in model.names.items() if n in C.POSITIVE_CLASSES}
@@ -48,8 +61,9 @@ def predict(image, lo, hi):
 
 
 # -------------------------------------------------------------- cost views
-def dashboard(lo, hi, base_rate):
+def dashboard(lo, hi, base_rate, source):
     lo, hi = min(lo, hi), max(lo, hi)
+    df = get_df(source)
     r = costing.evaluate(df, lo, hi, base_rate)
     st = costing.staffing(r["review_share"])
 
@@ -61,7 +75,8 @@ def dashboard(lo, hi, base_rate):
         f"Review load: {st['reviews_per_day']:,.0f} cases/day ≈ {st['person_hours']:.1f} h "
         f"≈ **{st['people_needed']:.2f} people** "
         f"({'within' if st['feasible'] else 'OVER'} the {C.REVIEWERS_AVAILABLE} available)  \n"
-        f"After review, per 1,000: TP {r['tp']:.1f} · FN {r['fn']:.1f} · FP {r['fp']:.1f} · TN {r['tn']:.1f}"
+        f"After review, per 1,000: TP {r['tp']:.1f} · FN {r['fn']:.1f} · FP {r['fp']:.1f} · TN {r['tn']:.1f}  \n"
+        f"Based on {len(df)} scored images ({int(df.label.sum())} diseased, {int((1 - df.label).sum())} healthy) — {source}"
     )
 
     # confusion matrix: actual x decision, per 1,000 cases at the assumed base rate
@@ -81,7 +96,7 @@ def dashboard(lo, hi, base_rate):
     fig2, ax2 = plt.subplots(figsize=(6, 3.4))
     ax2.plot(ts, costs, label="cost (no review band)")
     ax2.axvline(C.CHOSEN_SINGLE, color="green", ls="-", label=f"chosen = {C.CHOSEN_SINGLE:.2f}")
-    ax2.axvline(t_best, color="grey", ls=":", label=f"sweep minimum = {t_best:.2f}")
+    ax2.axvline(t_best, color="grey", ls=":", label=f"sweep minimum (plateau middle) = {t_best:.2f}")
     ax2.axvspan(lo, hi, color="orange", alpha=0.2, label="current review band")
     ax2.set_xlabel("Confidence threshold")
     ax2.set_ylabel("€ per 1,000 cases")
@@ -90,6 +105,17 @@ def dashboard(lo, hi, base_rate):
 
     strat = costing.strategies(df, base_rate).round(2)
     return summary, fig1, fig2, strat
+
+
+def uncertainty(base_rate, source):
+    ths, mins = costing.bootstrap(get_df(source), base_rate)
+    if len(ths) == 0:
+        return "Not enough data."
+    return (f"**Bootstrap ({len(ths)} resamples, {source})**  \n"
+            f"Best single threshold: median {np.median(ths):.2f}, 90% interval "
+            f"{np.percentile(ths, 5):.2f} to {np.percentile(ths, 95):.2f}  \n"
+            f"Minimum cost per 1,000: median €{np.median(mins):,.0f}, 90% interval "
+            f"€{np.percentile(mins, 5):,.0f} to €{np.percentile(mins, 95):,.0f}")
 
 
 def per_class_table():
@@ -110,6 +136,8 @@ def build():
             lo = gr.Slider(0, 1, value=C.CHOSEN_LO, step=0.01, label="Low threshold (below = pass)")
             hi = gr.Slider(0, 1, value=C.CHOSEN_HI, step=0.01, label="High threshold (above = fail)")
             base = gr.Slider(0.001, 0.5, value=C.BASE_RATE, step=0.001, label="Assumed base rate (diseased share)")
+        source = gr.Radio(SOURCES, value=SOURCES[-2] if len(SOURCES) > 1 else SOURCES[0],
+                          label="Scored images used for the cost curve")
 
         with gr.Tab("Try an image"):
             with gr.Row():
@@ -124,9 +152,12 @@ def build():
                 cm_plot = gr.Plot(label="Confusion matrix")
                 curve_plot = gr.Plot(label="Cost vs threshold")
             strat = gr.Dataframe(label="Strategies compared (per 1,000 cases)")
-            for s in (lo, hi, base):
-                s.change(dashboard, [lo, hi, base], [summary, cm_plot, curve_plot, strat])
-            demo.load(dashboard, [lo, hi, base], [summary, cm_plot, curve_plot, strat])
+            for s in (lo, hi, base, source):
+                s.change(dashboard, [lo, hi, base, source], [summary, cm_plot, curve_plot, strat])
+            demo.load(dashboard, [lo, hi, base, source], [summary, cm_plot, curve_plot, strat])
+            boot_btn = gr.Button("How much does the best threshold depend on luck? (bootstrap)")
+            boot_txt = gr.Markdown()
+            boot_btn.click(uncertainty, [base, source], boot_txt)
 
         with gr.Tab("Per-class results"):
             note, t, b = per_class_table()

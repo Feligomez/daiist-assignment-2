@@ -189,6 +189,16 @@ def main():
                   "score_coco_zero_shot": s_coco, "score_trivial": s_trivial}
                  ).to_csv(C.OUT / "test_scores.csv", index=False)
 
+    # Validation split too: the test split alone (a couple of dozen images) is too small to
+    # choose a threshold from. The dashboard can pool valid + test for the cost sweep.
+    valid_dir = _split_dir(root, "val")
+    if valid_dir is not None:
+        vlabels = image_labels(valid_dir, names)
+        vfiles = list(vlabels)
+        pd.DataFrame({"image": vfiles, "label": [vlabels[f] for f in vfiles],
+                      "score": score_images(model, valid_dir, vfiles)}
+                     ).to_csv(C.OUT / "valid_scores.csv", index=False)
+
     baselines = {
         "finetuned": costing.image_metrics(y, s_model, 0.5),
         "coco_zero_shot": costing.image_metrics(y, s_coco, 0.5),
