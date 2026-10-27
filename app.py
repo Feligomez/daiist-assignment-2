@@ -33,7 +33,10 @@ def decide(score: float, lo: float, hi: float) -> str:
 def predict(image, lo, hi):
     if image is None:
         return None, "Upload an image."
-    r = model.predict(image, conf=0.001, verbose=False)[0]
+    # Gradio hands us RGB; Ultralytics treats numpy arrays as BGR (OpenCV convention).
+    # Without this flip the model sees red/blue swapped (a yellow banana looks blue).
+    bgr = image[..., ::-1]
+    r = model.predict(bgr, conf=0.001, verbose=False)[0]
     score = 0.0
     if r.boxes is not None and len(r.boxes):
         for cls, conf in zip(r.boxes.cls.tolist(), r.boxes.conf.tolist()):
