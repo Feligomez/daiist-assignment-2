@@ -38,26 +38,25 @@ DATA_DIR = ROOT / "datasets" / "data"
 # ("I assumed X because Y, and the answer changes if X drops below Z").
 PLACEHOLDER_COSTS = True       # set False once you've replaced everything below
 
-COSTS = {                      # euros per case
-    "fn": 50.0,   # diseased fruit passed as good (complaint, spoilage spread, recall risk)
-    "fp": 1.0,    # good fruit rejected (lost margin on one unit)
-    "tp": 0.0,    # diseased correctly rejected (maybe disposal cost?)
-    "tn": 0.0,    # good correctly passed (usually 0)
+COSTS = {                      # euros per case (one case = one box of fruit)
+    "fn": 34.0,   # diseased box ships: refund 20 + return shipping 6 + complaint handling 8
+    "fp": 3.0,    # good box rejected: manual re-sort, 10 min at 18 EUR/h
+    "tp": 3.0,    # diseased box rejected: same manual re-sort
+    "tn": 0.0,    # good box passes: nothing
 }
 
-# Assumed share of cases that are actually diseased IN PRODUCTION.
-# NOT the share in the test set -- the test set is usually balanced differently.
+# Assumed share of boxes with at least one rotten fruit IN PRODUCTION (not the test-set share).
 BASE_RATE = 0.05
 
 # ------------------------------------------------------------ human review
 REVIEW = {
-    "seconds": 6,          # time for a person to check one case
+    "seconds": 15,         # a person opens and checks one box
     "accuracy": 0.98,      # how often the human gets it right
     "hourly_cost": 18.0,   # EUR / hour, fully loaded
 }
 REVIEW["cost_per_case"] = REVIEW["seconds"] / 3600 * REVIEW["hourly_cost"]
 
-CASES_PER_DAY = 20_000     # TODO: volume through the line
+CASES_PER_DAY = 20_000     # boxes through the line per day
 SHIFT_HOURS = 7.0          # productive hours per reviewer per day
 REVIEWERS_AVAILABLE = 2    # people you could realistically staff
 
