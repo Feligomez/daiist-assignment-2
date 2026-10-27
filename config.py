@@ -36,7 +36,7 @@ DATA_DIR = ROOT / "datasets" / "data"
 #
 # PLACEHOLDER VALUES. Replace each with a figure you can justify
 # ("I assumed X because Y, and the answer changes if X drops below Z").
-PLACEHOLDER_COSTS = True       # set False once you've replaced everything below
+PLACEHOLDER_COSTS = False      # set False once you've replaced everything below
 
 COSTS = {                      # euros per case (one case = one box of fruit)
     "fn": 34.0,   # diseased box ships: refund 20 + return shipping 6 + complaint handling 8
@@ -63,6 +63,6 @@ REVIEWERS_AVAILABLE = 2    # people you could realistically staff
 # ----------------------------------------------------- chosen thresholds
 # Fill in AFTER you've run the sweep and defended the choice in REPORT.md.
 # score < LO -> pass ; LO <= score < HI -> human review ; score >= HI -> fail
-CHOSEN_LO = 0.30
-CHOSEN_HI = 0.70
-CHOSEN_SINGLE = 0.50       # best single threshold (no review band), for the curve marker
+CHOSEN_LO = 0.05
+CHOSEN_HI = 0.30
+CHOSEN_SINGLE = 0.28        # middle of the minimum-cost plateau; bootstrap median also 0.28    # best single threshold (no review band), for the curve marker
